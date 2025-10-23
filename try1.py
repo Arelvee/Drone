@@ -9,7 +9,11 @@ import time
 import os
 import sqlite3
 from datetime import datetime
-import numpy as np
+import csv
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class YOLOPowerLineInspector:
     def __init__(self, root):
@@ -32,9 +36,9 @@ class YOLOPowerLineInspector:
             3: "2-2B-Hummer Driven Wedge Joint-COVERED"
         }
         
-        # Thread management
-        self.frame_queue = queue.Queue(maxsize=3)  # Increased queue size for better performance
-        self.result_queue = queue.Queue(maxsize=3)
+        # Thread management - USE QUEUES INSTEAD OF LOCKS FOR BETTER PERFORMANCE
+        self.frame_queue = queue.Queue(maxsize=2)
+        self.result_queue = queue.Queue(maxsize=2)
         
         # Performance optimization variables
         self.last_frame_time = 0
@@ -44,14 +48,14 @@ class YOLOPowerLineInspector:
         self.skip_frames = 0
         self.frame_skip_ratio = 2
         
-        # Detection optimization variables
-        self.confidence_threshold = 0.2  # Lower threshold to detect more defects
-        self.iou_threshold = 0.4  # IOU threshold for NMS
-        self.enable_enhancement = True  # Enable image enhancement
-        
         # Detection history
-        self.current_detections = []  # Changed to list to handle multiple detections
-        self.detection_history = []
+        self.current_detection = {
+            "label": "No Detection", 
+            "confidence": "0%", 
+            "temperature": "0.0 °C",
+            "timestamp": "",
+            "multiple_detections": []  # New field for multiple detections
+        }
         
         self.setup_gui()
         self.initialize_database()
@@ -60,7 +64,7 @@ class YOLOPowerLineInspector:
     def initialize_database(self):
         """Initialize SQLite database with required tables"""
         try:
-            self.conn = sqlite3.connect('power_line_inspection.db')
+            self.conn = sqlite3.connect('power_line_inspection.db', check_same_thread=False)
             self.cursor = self.conn.cursor()
             
             # Create inspection records table
@@ -77,7 +81,6 @@ class YOLOPowerLineInspector:
                     ambient_temperature TEXT,
                     weather_conditions TEXT,
                     inspector_name TEXT,
-                    bbox_coordinates TEXT,
                     created_at TEXT DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
@@ -99,7 +102,7 @@ class YOLOPowerLineInspector:
                 ''', (class_id, class_name, f"Power line joint type: {class_name}"))
             
             self.conn.commit()
-            print("✅ Database initialized successfully")
+            logging.info("✅ Database initialized successfully")
             
         except sqlite3.Error as e:
             messagebox.showerror("Database Error", f"Failed to initialize database: {str(e)}")
@@ -118,7 +121,7 @@ class YOLOPowerLineInspector:
         title.pack(expand=True)
         
         subtitle = tk.Label(title_frame,
-                           text="AI-Powered Defect Detection System - Enhanced Detection Mode",
+                           text="AI-Powered Defect Detection System",
                            font=("Arial", 12),
                            bg="navy",
                            fg="lightblue")
@@ -139,71 +142,44 @@ class YOLOPowerLineInspector:
                                  bg="navy", fg="white", pady=8)
         results_header.pack(fill="x", pady=(0, 10))
 
-        # Current Detection Frame - Modified for multiple detections
-        current_detection_frame = tk.LabelFrame(left_panel, text="Current Detections", 
+        # Current Detection Frame
+        current_detection_frame = tk.LabelFrame(left_panel, text="Current Detection", 
                                                font=("Arial", 12, "bold"),
                                                bg="white", padx=10, pady=10)
         current_detection_frame.pack(fill="x", padx=10, pady=5)
 
-        # Create a scrollable frame for multiple detections
-        detection_canvas = tk.Canvas(current_detection_frame, bg="white", height=150)
-        scrollbar = ttk.Scrollbar(current_detection_frame, orient="vertical", command=detection_canvas.yview)
-        self.detection_scrollable_frame = ttk.Frame(detection_canvas)
+        # Detection information with better styling - MODIFIED FOR MULTIPLE DETECTIONS
+        self.detection_vars = {
+            "label": tk.StringVar(value="No Detection"),
+            "confidence": tk.StringVar(value="0%"),
+            "temperature": tk.StringVar(value="0.0 °C"),
+            "timestamp": tk.StringVar(value="--"),
+            "multiple_info": tk.StringVar(value="")  # New variable for multiple detections info
+        }
 
-        self.detection_scrollable_frame.bind(
-            "<Configure>",
-            lambda e: detection_canvas.configure(scrollregion=detection_canvas.bbox("all"))
-        )
+        info_styles = {"font": ("Arial", 11), "bg": "white", "anchor": "w", "pady": 3}
 
-        detection_canvas.create_window((0, 0), window=self.detection_scrollable_frame, anchor="nw")
-        detection_canvas.configure(yscrollcommand=scrollbar.set)
+        tk.Label(current_detection_frame, text="Defect Type:", **info_styles).pack(fill="x")
+        tk.Label(current_detection_frame, textvariable=self.detection_vars["label"], 
+                font=("Arial", 11, "bold"), bg="white", fg="red").pack(fill="x")
 
-        detection_canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
+        tk.Label(current_detection_frame, text="Confidence Level:", **info_styles).pack(fill="x")
+        tk.Label(current_detection_frame, textvariable=self.detection_vars["confidence"], 
+                font=("Arial", 11, "bold"), bg="white", fg="blue").pack(fill="x")
 
-        # Detection Controls Section
-        detection_controls_frame = tk.LabelFrame(left_panel, text="Detection Controls", 
-                                               font=("Arial", 12, "bold"),
-                                               bg="white", padx=10, pady=10)
-        detection_controls_frame.pack(fill="x", padx=10, pady=5)
+        tk.Label(current_detection_frame, text="Estimated Temperature:", **info_styles).pack(fill="x")
+        tk.Label(current_detection_frame, textvariable=self.detection_vars["temperature"], 
+                font=("Arial", 11, "bold"), bg="white", fg="darkorange").pack(fill="x")
 
-        # Confidence threshold control
-        confidence_frame = tk.Frame(detection_controls_frame, bg="white")
-        confidence_frame.pack(fill="x", pady=5)
-        
-        tk.Label(confidence_frame, text="Confidence Threshold:", font=("Arial", 9), bg="white").pack(side="left")
-        self.confidence_var = tk.StringVar(value="0.3")
-        confidence_scale = ttk.Scale(confidence_frame, from_=0.1, to=0.9, 
-                                    orient="horizontal", variable=self.confidence_var,
-                                    command=self.update_confidence_threshold)
-        confidence_scale.pack(side="right", fill="x", expand=True)
-        
-        self.confidence_label = tk.Label(confidence_frame, text="0.3", font=("Arial", 9), bg="white")
-        self.confidence_label.pack(side="right", padx=(5, 0))
+        # NEW: Multiple Detections Information
+        tk.Label(current_detection_frame, text="Multiple Detections:", **info_styles).pack(fill="x")
+        multiple_info_label = tk.Label(current_detection_frame, textvariable=self.detection_vars["multiple_info"], 
+                                     font=("Arial", 10), bg="white", fg="green", justify="left", wraplength=280)
+        multiple_info_label.pack(fill="x")
 
-        # IOU threshold control
-        iou_frame = tk.Frame(detection_controls_frame, bg="white")
-        iou_frame.pack(fill="x", pady=5)
-        
-        tk.Label(iou_frame, text="IOU Threshold:", font=("Arial", 9), bg="white").pack(side="left")
-        self.iou_var = tk.StringVar(value="0.4")
-        iou_scale = ttk.Scale(iou_frame, from_=0.1, to=0.9, 
-                             orient="horizontal", variable=self.iou_var,
-                             command=self.update_iou_threshold)
-        iou_scale.pack(side="right", fill="x", expand=True)
-        
-        self.iou_label = tk.Label(iou_frame, text="0.4", font=("Arial", 9), bg="white")
-        self.iou_label.pack(side="right", padx=(5, 0))
-
-        # Enhancement controls
-        enhancement_frame = tk.Frame(detection_controls_frame, bg="white")
-        enhancement_frame.pack(fill="x", pady=5)
-        
-        self.enhancement_var = tk.BooleanVar(value=True)
-        enhancement_cb = ttk.Checkbutton(enhancement_frame, text="Enable Image Enhancement", 
-                                        variable=self.enhancement_var,
-                                        command=self.toggle_enhancement)
-        enhancement_cb.pack(side="left")
+        tk.Label(current_detection_frame, text="Time Detected:", **info_styles).pack(fill="x")
+        tk.Label(current_detection_frame, textvariable=self.detection_vars["timestamp"], 
+                **info_styles).pack(fill="x")
 
         # Performance Controls Section
         perf_frame = tk.LabelFrame(left_panel, text="Performance Controls", 
@@ -277,19 +253,12 @@ class YOLOPowerLineInspector:
             "total_detections": tk.StringVar(value="0"),
             "session_time": tk.StringVar(value="00:00:00"),
             "frame_rate": tk.StringVar(value="0 FPS"),
-            "processing_rate": tk.StringVar(value="0 FPS"),
-            "current_detections": tk.StringVar(value="0")
+            "processing_rate": tk.StringVar(value="0 FPS")
         }
-
-        info_styles = {"font": ("Arial", 11), "bg": "white", "anchor": "w", "pady": 3}
 
         tk.Label(stats_frame, text="Total Detections:", **info_styles).pack(fill="x")
         tk.Label(stats_frame, textvariable=self.stats_vars["total_detections"], 
                 font=("Arial", 11, "bold"), bg="white", fg="purple").pack(fill="x")
-
-        tk.Label(stats_frame, text="Current Frame Detections:", **info_styles).pack(fill="x")
-        tk.Label(stats_frame, textvariable=self.stats_vars["current_detections"], 
-                font=("Arial", 11, "bold"), bg="white", fg="green").pack(fill="x")
 
         tk.Label(stats_frame, text="Session Duration:", **info_styles).pack(fill="x")
         tk.Label(stats_frame, textvariable=self.stats_vars["session_time"], 
@@ -388,34 +357,7 @@ class YOLOPowerLineInspector:
         self.processing_fps = 0
         self.last_fps_update = time.time()
         self.processing_frame_count = 0
-
-    def update_confidence_threshold(self, value):
-        """Update confidence threshold for YOLO detection"""
-        try:
-            new_threshold = float(value)
-            if 0.1 <= new_threshold <= 0.9:
-                self.confidence_threshold = new_threshold
-                self.confidence_label.config(text=f"{new_threshold:.1f}")
-                self.status_var.set(f"🔄 Confidence threshold set to {new_threshold:.1f}")
-        except ValueError:
-            pass
-
-    def update_iou_threshold(self, value):
-        """Update IOU threshold for NMS"""
-        try:
-            new_threshold = float(value)
-            if 0.1 <= new_threshold <= 0.9:
-                self.iou_threshold = new_threshold
-                self.iou_label.config(text=f"{new_threshold:.1f}")
-                self.status_var.set(f"🔄 IOU threshold set to {new_threshold:.1f}")
-        except ValueError:
-            pass
-
-    def toggle_enhancement(self):
-        """Toggle image enhancement on/off"""
-        self.enable_enhancement = self.enhancement_var.get()
-        status = "enabled" if self.enable_enhancement else "disabled"
-        self.status_var.set(f"🔄 Image enhancement {status}")
+        self.last_processing_time = time.time()
 
     def update_frame_skip(self):
         """Update frame skip ratio"""
@@ -432,51 +374,28 @@ class YOLOPowerLineInspector:
         status = "enabled" if self.processing_enabled else "disabled"
         self.status_var.set(f"🔄 Real-time processing {status}")
 
-    def enhance_image(self, image):
-        """Apply image enhancement techniques to improve detection"""
-        if not self.enable_enhancement:
-            return image
-        
-        try:
-            # Convert to LAB color space for better contrast enhancement
-            lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
-            l, a, b = cv2.split(lab)
-            
-            # Apply CLAHE to L channel for contrast enhancement
-            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-            l_enhanced = clahe.apply(l)
-            
-            # Merge enhanced L channel with original A and B channels
-            lab_enhanced = cv2.merge([l_enhanced, a, b])
-            enhanced = cv2.cvtColor(lab_enhanced, cv2.COLOR_LAB2BGR)
-            
-            # Apply slight sharpening
-            kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
-            enhanced = cv2.filter2D(enhanced, -1, kernel)
-            
-            return enhanced
-        except Exception as e:
-            print(f"Image enhancement error: {e}")
-            return image
-
+    # 🔹 Load YOLO Model
     def load_model(self):
         """Load YOLO model with error handling"""
+        MODEL_PATH = 'finalsirbagsic.pt'
+        
+        if not os.path.exists(MODEL_PATH):
+            logging.error(f"Model file '{MODEL_PATH}' not found!")
+            self.status_var.set(f"❌ Model file '{MODEL_PATH}' not found")
+            messagebox.showerror("Model Error", 
+                               f"Model file '{MODEL_PATH}' not found!\n\n"
+                               "Please ensure the YOLO model file is in the same directory.")
+            return
+        
         try:
             self.status_var.set("🔄 Loading YOLO model...")
             self.root.update()
             
-            if not os.path.exists('sirbagsic.pt'):
-                messagebox.showerror("Model Error", 
-                                   "Model file 'sirbagsic.pt' not found!\n\n"
-                                   "Please ensure the YOLO model file is in the same directory.")
-                self.status_var.set("🔴 Error: Model file 'sirbagsic.pt' not found")
-                return
-            
-            self.model = YOLO('sirbagsic.pt')
+            self.model = YOLO(MODEL_PATH)
+            logging.info(f"✅ Loaded model from {MODEL_PATH}")
             
             # Update model class names with our specific classes
             if hasattr(self.model, 'names'):
-                # Map the model's class names to our predefined names
                 for i, name in self.class_names.items():
                     if i < len(self.model.names):
                         self.model.names[i] = name
@@ -484,9 +403,53 @@ class YOLOPowerLineInspector:
             self.status_var.set("✅ YOLO Model Loaded Successfully - Ready for Inspection")
             
         except Exception as e:
-            error_msg = f"❌ Failed to load YOLO model: {str(e)}"
+            error_msg = f"❌ Error loading model: {e}"
+            logging.error(error_msg)
             self.status_var.set(error_msg)
             messagebox.showerror("Model Loading Error", error_msg)
+
+    # 🔹 Initialize Camera
+    def open_camera(self):
+        """Initialize camera with retry mechanism"""
+        # Try different camera backends for better compatibility
+        backends = [cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_V4L2, cv2.CAP_ANY]
+        
+        camera = None
+        for backend in backends:
+            camera = cv2.VideoCapture(0, backend)
+            if camera.isOpened():
+                break
+            # Try different camera indices
+            for i in range(1, 3):
+                camera = cv2.VideoCapture(i, backend)
+                if camera.isOpened():
+                    break
+            if camera and camera.isOpened():
+                break
+        
+        if not camera or not camera.isOpened():
+            retry_count = 0
+            while retry_count < 5:
+                logging.warning("🔄 Retrying camera connection...")
+                time.sleep(2)
+                camera = cv2.VideoCapture(0)
+                if camera.isOpened():
+                    break
+                retry_count += 1
+
+        if not camera or not camera.isOpened():
+            logging.error("❌ Camera failed to open. Check connection.")
+            return None
+
+        # Camera configuration for better performance
+        camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        camera.set(cv2.CAP_PROP_FPS, 30)
+        camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        camera.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+        
+        logging.info("✅ Camera initialized successfully")
+        return camera
 
     def start_inspection(self):
         """Start the camera and begin inspection"""
@@ -496,35 +459,15 @@ class YOLOPowerLineInspector:
                                      "Please wait for the YOLO model to load first.")
                 return
 
-            # Try different camera backends for better performance
-            backends = [cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_V4L2, cv2.CAP_ANY]
-            
-            for backend in backends:
-                self.cap = cv2.VideoCapture(0, backend)
-                if self.cap.isOpened():
-                    break
-                # Try different camera indices
-                for i in range(1, 3):
-                    self.cap = cv2.VideoCapture(i, backend)
-                    if self.cap.isOpened():
-                        break
-                if self.cap.isOpened():
-                    break
-            
-            if not self.cap.isOpened():
+            # Initialize camera using the patterned method
+            self.cap = self.open_camera()
+            if self.cap is None:
                 messagebox.showerror("Camera Error", 
                                    "Cannot access camera. Please check:\n"
                                    "1. Camera is connected\n"
                                    "2. No other application is using the camera\n"
                                    "3. Camera drivers are installed")
                 return
-
-            # Camera configuration for better performance
-            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-            self.cap.set(cv2.CAP_PROP_FPS, 30)
-            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Reduce buffer size for lower latency
-            self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))  # Better compression
 
             self.running = True
             self.start_btn.config(state="disabled", bg="gray")
@@ -536,6 +479,10 @@ class YOLOPowerLineInspector:
             self.frame_count = 0
             self.processing_frame_count = 0
             self.last_fps_update = time.time()
+            self.last_processing_time = time.time()
+            
+            # Clear queues
+            self.clear_queues()
             
             self.status_var.set("🎥 Camera Active - Real-time inspection running...")
 
@@ -564,21 +511,36 @@ class YOLOPowerLineInspector:
             self.cap.release()
             self.cap = None
         
-        self.status_var.set("🛑 Inspection Stopped - Ready for new session")
-        
         # Clear queues
         self.clear_queues()
+        
+        self.status_var.set("🛑 Inspection Stopped - Ready for new session")
+        logging.info("🛑 Inspection stopped")
 
-    def capture_frames(self):
-        """Capture frames from camera in separate thread with optimized performance"""
-        while self.running and self.cap:
+    def clear_queues(self):
+        """Clear all queues"""
+        while not self.frame_queue.empty():
             try:
-                ret, frame = self.cap.read()
-                if not ret:
-                    self.status_var.set("⚠️ Camera frame capture failed")
-                    time.sleep(0.1)  # Prevent busy waiting
+                self.frame_queue.get_nowait()
+            except queue.Empty:
+                break
+        while not self.result_queue.empty():
+            try:
+                self.result_queue.get_nowait()
+            except queue.Empty:
+                break
+
+    # 🔹 Capture Frames from Camera Stream
+    def capture_frames(self):
+        """Capture frames from camera in separate thread"""
+        while self.running and self.cap and self.cap.isOpened():
+            try:
+                success, frame = self.cap.read()
+                if not success:
+                    logging.error("❌ Failed to read from camera stream.")
+                    time.sleep(0.1)
                     continue
-                
+
                 # Calculate FPS for camera feed
                 current_time = time.time()
                 self.frame_count += 1
@@ -587,252 +549,211 @@ class YOLOPowerLineInspector:
                     self.fps = self.frame_count / (current_time - self.last_fps_update)
                     self.frame_count = 0
                     self.last_fps_update = current_time
-                
-                # Put frame in queue (replace old frame if queue full)
-                if self.frame_queue.full():
+
+                # Put frame in queue (non-blocking)
+                if not self.frame_queue.full():
                     try:
-                        self.frame_queue.get_nowait()
-                    except queue.Empty:
-                        pass
+                        self.frame_queue.put(frame.copy(), timeout=0.1)
+                    except queue.Full:
+                        pass  # Skip frame if queue is full
                 
-                self.frame_queue.put(frame)
-                
-                # Control frame rate to prevent overwhelming the system
+                # Control frame rate
                 elapsed = time.time() - current_time
-                if elapsed < self.frame_interval:
-                    time.sleep(self.frame_interval - elapsed)
+                sleep_time = self.frame_interval - elapsed
+                if sleep_time > 0:
+                    time.sleep(sleep_time)
                 
             except Exception as e:
-                if self.running:  # Only log if we're supposed to be running
-                    print(f"Capture error: {e}")
-                time.sleep(0.1)  # Prevent busy waiting on error
+                if self.running:
+                    logging.error(f"Capture error: {e}")
+                time.sleep(0.1)
                 continue
 
+    # 🔹 Process Frames with YOLO
     def process_frames(self):
-        """Process frames with YOLO in separate thread with optimized performance"""
-        last_processing_time = time.time()
+        """Process frames with YOLO in separate thread"""
         processing_frame_count = 0
         
         while self.running:
             try:
-                # Get frame with timeout
-                frame = self.frame_queue.get(timeout=0.5)
-                
-                # Frame skipping logic - only process every Nth frame
+                # Get frame from queue with timeout
+                try:
+                    frame = self.frame_queue.get(timeout=0.5)
+                except queue.Empty:
+                    continue
+
+                # Frame skipping logic
                 self.skip_frames = (self.skip_frames + 1) % self.frame_skip_ratio
                 if self.skip_frames != 0 and self.frame_skip_ratio > 1:
-                    # Skip processing this frame, just display it
-                    if self.result_queue.full():
-                        try:
-                            self.result_queue.get_nowait()
-                        except queue.Empty:
-                            pass
-                    self.result_queue.put((frame, self.current_detections))
+                    # Skip processing this frame
+                    if not self.result_queue.full():
+                        self.result_queue.put((frame, self.current_detection))
                     continue
                 
                 if not self.processing_enabled:
-                    # Skip YOLO processing, just pass the frame through
-                    if self.result_queue.full():
-                        try:
-                            self.result_queue.get_nowait()
-                        except queue.Empty:
-                            pass
-                    self.result_queue.put((frame, self.current_detections))
+                    # Skip YOLO processing
+                    if not self.result_queue.full():
+                        self.result_queue.put((frame, self.current_detection))
                     continue
-                
-                # Apply image enhancement
-                enhanced_frame = self.enhance_image(frame)
-                
-                # Run YOLO inference with optimized settings for maximum detection
+
+                # 🔹 Run YOLO inference
                 start_time = time.time()
-                results = self.model(enhanced_frame, 
-                                   conf=self.confidence_threshold,  # Dynamic confidence
-                                   iou=self.iou_threshold,         # Dynamic IOU
-                                   verbose=False, 
-                                   imgsz=320,
-                                   augment=True)  # Enable augmentation for better detection
+                results = self.model(frame, conf=0.1, verbose=False, imgsz=320)
                 processing_time = time.time() - start_time
-                
+
                 # Calculate processing FPS
                 processing_frame_count += 1
                 current_time = time.time()
-                if current_time - last_processing_time >= 1.0:
-                    self.processing_fps = processing_frame_count / (current_time - last_processing_time)
+                if current_time - self.last_processing_time >= 1.0:
+                    self.processing_fps = processing_frame_count / (current_time - self.last_processing_time)
                     processing_frame_count = 0
-                    last_processing_time = current_time
+                    self.last_processing_time = current_time
+
+                # 🔹 Process detection results
+                if results and len(results[0].boxes) > 0:
+                    detection_info = self.extract_detection_info(results)
+                    annotated_frame = results[0].plot()
+                    
+                    # Put result in queue
+                    if not self.result_queue.full():
+                        self.result_queue.put((annotated_frame, detection_info))
+                else:
+                    detection_info = {
+                        "label": "No Detection",
+                        "confidence": "0%", 
+                        "temperature": "0.0 °C",
+                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "multiple_info": ""
+                    }
+                    # Put original frame in queue
+                    if not self.result_queue.full():
+                        self.result_queue.put((frame, detection_info))
                 
-                annotated_frame = results[0].plot()
-                
-                # Extract detection information
-                detection_info = self.extract_detection_info(results)
-                
-                # Put result in queue
-                if self.result_queue.full():
-                    try:
-                        self.result_queue.get_nowait()
-                    except queue.Empty:
-                        pass
-                
-                self.result_queue.put((annotated_frame, detection_info))
-                
-            except queue.Empty:
-                continue
             except Exception as e:
-                if self.running:
-                    print(f"Processing error: {e}")
+                logging.error(f"❌ Error processing frame: {e}")
                 continue
 
     def extract_detection_info(self, results):
-        """Extract detection information from YOLO results - now handles multiple detections"""
-        all_detections = []
+        """Extract detection information from YOLO results - PROCESS ALL DETECTIONS"""
+        detection_info = {
+            "label": "No Detection",
+            "confidence": "0%",
+            "temperature": "0.0 °C",
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "multiple_info": ""
+        }
         
         try:
             if len(results[0].boxes) > 0:
                 boxes = results[0].boxes
+                detections_count = len(boxes)
                 
-                for i, box in enumerate(boxes):
-                    confidence = float(box.conf[0])
-                    class_id = int(box.cls[0])
-                    bbox = box.xyxy[0].tolist()  # Get bounding box coordinates
+                # Process ALL detections, not just the highest confidence
+                labels = []
+                confidences = []
+                class_ids = []
+                temperatures = []
+                
+                for i in range(len(boxes)):
+                    confidence = float(boxes.conf[i])
+                    class_id = int(boxes.cls[i])
                     
                     # Use our predefined class names
                     class_name = self.class_names.get(class_id, f"Unknown Class {class_id}")
                     
-                    # Simulate temperature based on confidence and defect type
-                    base_temp = 25.0  # Ambient temperature
-                    temp_increase = confidence * 15  # More confidence = higher estimated temperature
+                    # Calculate temperature for EACH detection
+                    base_temp = 25.0
+                    temp_increase = confidence * 15
+                    temperature = base_temp + temp_increase
+                    
+                    labels.append(class_name)
+                    confidences.append(confidence)
+                    class_ids.append(class_id)
+                    temperatures.append(temperature)
+                
+                # If multiple detections, combine them
+                if len(labels) > 0:
+                    if len(labels) == 1:
+                        # Single detection
+                        main_label = labels[0]
+                        main_confidence = confidences[0]
+                        main_temperature = temperatures[0]
+                        multiple_info = ""
+                    else:
+                        # Multiple detections - show combined info
+                        main_label = f"Multiple Detections ({len(labels)})"
+                        main_confidence = max(confidences)  # Show highest confidence
+                        main_temperature = max(temperatures)  # Show highest temperature
+                        
+                        # Create detailed multiple detection info
+                        multiple_lines = []
+                        for i, (label, conf, temp) in enumerate(zip(labels, confidences, temperatures), 1):
+                            multiple_lines.append(f"{i}. {label}: {conf:.1%} - {temp:.1f}°C")
+                        multiple_info = "\n".join(multiple_lines)
                     
                     detection_info = {
-                        "label": class_name,
-                        "confidence": f"{confidence:.1%}",
-                        "temperature": f"{base_temp + temp_increase:.1f} °C",
+                        "label": main_label,
+                        "confidence": f"{main_confidence:.1%}",
+                        "temperature": f"{main_temperature:.1f} °C",
                         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                        "bbox": bbox
+                        "multiple_info": multiple_info,
+                        # Store all detections for database
+                        "all_detections": list(zip(labels, confidences, class_ids, temperatures))
                     }
                     
-                    all_detections.append(detection_info)
+                    # Store current detection
+                    self.current_detection = detection_info
                     
-                    # Save to database immediately with form data
+                    # Count ALL detections, not just one
+                    self.detection_count += len(labels)
+                    
+                    # Save ALL detections to database
                     self.save_detection_to_db(detection_info)
-                
-                # Store current detections
-                self.current_detections = all_detections
-                
-                # Count detections
-                self.detection_count += len(all_detections)
-                
+                    
         except Exception as e:
-            print(f"Error extracting detection info: {e}")
+            logging.error(f"Error extracting detection info: {e}")
             
-        return all_detections
-
-    def save_detection_to_db(self, detection_info):
-        """Save detection to SQLite database"""
-        try:
-            if detection_info["label"] != "No Detection":
-                form_data = self.get_form_data()
-                
-                self.cursor.execute('''
-                    INSERT INTO inspection_records 
-                    (timestamp, defect_type, confidence, temperature, distance, line_number, pole_number, ambient_temperature, weather_conditions, inspector_name, bbox_coordinates)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (
-                    detection_info['timestamp'],
-                    detection_info['label'],
-                    float(detection_info['confidence'].strip('%')) / 100.0,
-                    detection_info['temperature'],
-                    form_data.get('Distance from Target', ''),
-                    form_data.get('Line Number', ''),
-                    form_data.get('Pole Number', ''),
-                    form_data.get('Ambient Temperature', ''),
-                    form_data.get('Weather Conditions', ''),
-                    form_data.get('Inspector Name', ''),
-                    str(detection_info.get('bbox', []))
-                ))
-                
-                self.conn.commit()
-                
-        except sqlite3.Error as e:
-            print(f"Database error: {e}")
-
-    def update_detection_display(self, detections):
-        """Update the detection display with multiple detections"""
-        # Clear previous detections
-        for widget in self.detection_scrollable_frame.winfo_children():
-            widget.destroy()
-        
-        if not detections:
-            # Show no detection message
-            no_detect_label = tk.Label(self.detection_scrollable_frame, 
-                                     text="No Defects Detected",
-                                     font=("Arial", 10, "italic"),
-                                     bg="white", fg="gray")
-            no_detect_label.pack(fill="x", pady=2)
-            return
-        
-        # Display each detection
-        for i, detection in enumerate(detections):
-            detection_frame = tk.Frame(self.detection_scrollable_frame, bg="white", relief="solid", bd=1)
-            detection_frame.pack(fill="x", pady=2, padx=2)
-            
-            # Detection header
-            header_frame = tk.Frame(detection_frame, bg="lightyellow")
-            header_frame.pack(fill="x")
-            
-            tk.Label(header_frame, text=f"Defect #{i+1}: {detection['label']}", 
-                    font=("Arial", 9, "bold"), bg="lightyellow", fg="black").pack(side="left")
-            
-            # Detection details
-            details_frame = tk.Frame(detection_frame, bg="white")
-            details_frame.pack(fill="x", padx=5)
-            
-            tk.Label(details_frame, text=f"Confidence: {detection['confidence']}", 
-                    font=("Arial", 8), bg="white", fg="blue").pack(anchor="w")
-            tk.Label(details_frame, text=f"Temperature: {detection['temperature']}", 
-                    font=("Arial", 8), bg="white", fg="darkorange").pack(anchor="w")
-            tk.Label(details_frame, text=f"Time: {detection['timestamp']}", 
-                    font=("Arial", 7), bg="white", fg="gray").pack(anchor="w")
+        return detection_info
 
     def update_gui(self):
-        """Update GUI elements from main thread with performance optimization"""
+        """Update GUI elements from main thread - NON-BLOCKING"""
         if self.running:
             try:
                 # Get latest results from queue (non-blocking)
                 if not self.result_queue.empty():
-                    annotated_frame, detections = self.result_queue.get_nowait()
-                    
-                    # Update detection information display
-                    self.update_detection_display(detections)
-                    
-                    # Update current detections count
-                    self.stats_vars["current_detections"].set(str(len(detections)))
-                    
-                    # Update camera display
-                    self.display_annotated_frame(annotated_frame)
-                    
-                    # Store detection data
-                    if detections:
-                        for detection in detections:
+                    try:
+                        annotated_frame, detection_info = self.result_queue.get_nowait()
+                        
+                        # Update detection information
+                        for key, value in detection_info.items():
+                            if key in self.detection_vars:
+                                self.detection_vars[key].set(value)
+                        
+                        # Update camera display
+                        self.display_annotated_frame(annotated_frame)
+                        
+                        # Store detection data
+                        if detection_info["label"] != "No Detection":
                             self.inspection_data.append({
-                                **detection,
+                                **detection_info,
                                 "form_data": self.get_form_data()
                             })
+                    
+                    except queue.Empty:
+                        pass
             
-            except queue.Empty:
-                pass
             except Exception as e:
-                print(f"GUI update error: {e}")
+                logging.error(f"GUI update error: {e}")
             
             # Update FPS displays
             self.stats_vars["frame_rate"].set(f"{self.fps:.1f} FPS")
             self.stats_vars["processing_rate"].set(f"{self.processing_fps:.1f} FPS")
-            self.stats_vars["total_detections"].set(str(self.detection_count))
             
             # Schedule next update
             self.root.after(30, self.update_gui)
 
     def display_annotated_frame(self, frame):
-        """Display the annotated frame in the GUI with optimized performance"""
+        """Display the annotated frame in the GUI"""
         try:
             # Convert frame for display
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -849,7 +770,7 @@ class YOLOPowerLineInspector:
             self.camera_display.image = imgtk
             
         except Exception as e:
-            print(f"Frame display error: {e}")
+            logging.error(f"Frame display error: {e}")
 
     def update_session_timer(self):
         """Update session timer and statistics"""
@@ -862,6 +783,9 @@ class YOLOPowerLineInspector:
                 seconds = int(elapsed % 60)
                 self.stats_vars["session_time"].set(f"{hours:02d}:{minutes:02d}:{seconds:02d}")
             
+            # Update detection count
+            self.stats_vars["total_detections"].set(str(self.detection_count))
+            
             # Schedule next update
             self.root.after(1000, self.update_session_timer)
 
@@ -872,15 +796,102 @@ class YOLOPowerLineInspector:
             form_data[field] = entry.get()
         return form_data
 
+    def save_detection_to_db(self, detection_info):
+        """Save ALL detections to SQLite database"""
+        try:
+            if detection_info["label"] != "No Detection" and "all_detections" in detection_info:
+                form_data = self.get_form_data()
+                
+                # Save EACH detection individually
+                for label, confidence, class_id, temperature in detection_info["all_detections"]:
+                    self.cursor.execute('''
+                        INSERT INTO inspection_records 
+                        (timestamp, defect_type, confidence, temperature, distance, line_number, pole_number, ambient_temperature, weather_conditions, inspector_name)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (
+                        detection_info['timestamp'],
+                        label,  # Use individual label
+                        confidence,  # Use individual confidence
+                        f"{temperature:.1f} °C",  # Use individual temperature
+                        form_data.get('Distance from Target', ''),
+                        form_data.get('Line Number', ''),
+                        form_data.get('Pole Number', ''),
+                        form_data.get('Ambient Temperature', ''),
+                        form_data.get('Weather Conditions', ''),
+                        form_data.get('Inspector Name', '')
+                    ))
+                    
+                self.conn.commit()
+                logging.info(f"✅ {len(detection_info['all_detections'])} detections saved to database")
+                    
+        except sqlite3.Error as e:
+            logging.error(f"Database error: {e}")
+
+    def save_inspection_data_manual(self):
+        """Save inspection data manually without requiring detection"""
+        try:
+            form_data = self.get_form_data()
+            
+            # Validate required fields
+            if not form_data.get('Line Number') or not form_data.get('Pole Number'):
+                messagebox.showwarning("Missing Data", "Please enter Line Number and Pole Number")
+                return
+            
+            # Get current detection info or create default
+            if self.current_detection["label"] != "No Detection":
+                detection_info = self.current_detection
+            else:
+                detection_info = {
+                    "label": "Manual Inspection - No Defects",
+                    "confidence": "0%",
+                    "temperature": form_data.get('Ambient Temperature', '0.0 °C'),
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "multiple_info": ""
+                }
+            
+            # Save to database
+            self.cursor.execute('''
+                INSERT INTO inspection_records 
+                (timestamp, defect_type, confidence, temperature, distance, line_number, pole_number, ambient_temperature, weather_conditions, inspector_name)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                detection_info['timestamp'],
+                detection_info['label'],
+                float(detection_info['confidence'].strip('%')) / 100.0 if detection_info['confidence'] != "0%" else 0.0,
+                detection_info['temperature'],
+                form_data.get('Distance from Target', ''),
+                form_data.get('Line Number', ''),
+                form_data.get('Pole Number', ''),
+                form_data.get('Ambient Temperature', ''),
+                form_data.get('Weather Conditions', ''),
+                form_data.get('Inspector Name', '')
+            ))
+            
+            self.conn.commit()
+            
+            messagebox.showinfo("Success", "Inspection data saved to database successfully!")
+            self.status_var.set("✅ Inspection data saved to database")
+            logging.info("✅ Manual inspection data saved to database")
+            
+        except sqlite3.Error as e:
+            error_msg = f"Database error: {e}"
+            messagebox.showerror("Database Error", error_msg)
+            self.status_var.set("❌ Error saving to database")
+        except Exception as e:
+            error_msg = f"Error saving inspection data: {e}"
+            messagebox.showerror("Save Error", error_msg)
+            self.status_var.set("❌ Error saving inspection data")
+
     def save_inspection_report(self):
         """Save inspection report with current data"""
         try:
             # First save current data to database
             self.save_inspection_data_manual()
             
-            # Then create the text report (optional)
+            # Then create the text report
             if not self.inspection_data:
-                return  # Already saved to DB, no need for text report
+                messagebox.showinfo("No Data", "No inspection data available to generate report.")
+                return
             
             form_data = self.get_form_data()
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -901,70 +912,17 @@ class YOLOPowerLineInspector:
                 
                 f.write("Defect Log:\n")
                 f.write("-" * 20 + "\n")
-                for i, detection in enumerate(self.inspection_data, 1):
+                for i, detection in enumerate(self.inspection_data[-50:], 1):  # Last 50 detections
                     f.write(f"{i}. {detection['label']} - {detection['confidence']} ")
                     f.write(f"at {detection['timestamp']} (Temp: {detection['temperature']})\n")
             
             messagebox.showinfo("Report Saved", f"Inspection report saved as:\n{filename}")
             self.status_var.set(f"✅ Report saved: {filename}")
+            logging.info(f"✅ Inspection report saved: {filename}")
             
         except Exception as e:
             messagebox.showerror("Save Error", f"Failed to save report:\n{str(e)}")
-
-    def save_inspection_data_manual(self):
-        """Save inspection data manually without requiring detection"""
-        try:
-            form_data = self.get_form_data()
-            
-            # Validate required fields
-            if not form_data.get('Line Number') or not form_data.get('Pole Number'):
-                messagebox.showwarning("Missing Data", "Please enter Line Number and Pole Number")
-                return
-            
-            # Get current detection info or create default
-            if self.current_detections:
-                detection_info = self.current_detections[0]  # Use first detection
-            else:
-                detection_info = {
-                    "label": "Manual Inspection - No Defects",
-                    "confidence": "0%",
-                    "temperature": form_data.get('Ambient Temperature', '0.0 °C'),
-                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "bbox": []
-                }
-            
-            # Save to database
-            self.cursor.execute('''
-                INSERT INTO inspection_records 
-                (timestamp, defect_type, confidence, temperature, distance, line_number, pole_number, ambient_temperature, weather_conditions, inspector_name, bbox_coordinates)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                detection_info['timestamp'],
-                detection_info['label'],
-                float(detection_info['confidence'].strip('%')) / 100.0 if detection_info['confidence'] != "0%" else 0.0,
-                detection_info['temperature'],
-                form_data.get('Distance from Target', ''),
-                form_data.get('Line Number', ''),
-                form_data.get('Pole Number', ''),
-                form_data.get('Ambient Temperature', ''),
-                form_data.get('Weather Conditions', ''),
-                form_data.get('Inspector Name', ''),
-                str(detection_info.get('bbox', []))
-            ))
-            
-            self.conn.commit()
-            
-            messagebox.showinfo("Success", "Inspection data saved to database successfully!")
-            self.status_var.set("✅ Inspection data saved to database")
-            
-        except sqlite3.Error as e:
-            error_msg = f"Database error: {e}"
-            messagebox.showerror("Database Error", error_msg)
-            self.status_var.set("❌ Error saving to database")
-        except Exception as e:
-            error_msg = f"Error saving inspection data: {e}"
-            messagebox.showerror("Save Error", error_msg)
-            self.status_var.set("❌ Error saving inspection data")
+            logging.error(f"❌ Failed to save report: {e}")
 
     def export_data(self):
         """Export data to CSV format from database"""
@@ -985,22 +943,28 @@ class YOLOPowerLineInspector:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"inspection_data_{timestamp}.csv"
             
-            with open(filename, 'w') as f:
-                f.write("Timestamp,DefectType,Confidence,Temperature,Distance,LineNumber,PoleNumber,AmbientTemperature,WeatherConditions,InspectorName\n")
+            with open(filename, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.writer(f)
+                writer.writerow(["Timestamp", "DefectType", "Confidence", "Temperature", "Distance", 
+                               "LineNumber", "PoleNumber", "AmbientTemperature", "WeatherConditions", "InspectorName"])
+                
                 for record in records:
-                    f.write(','.join(f'"{str(item)}"' for item in record) + '\n')
+                    writer.writerow(record)
             
             messagebox.showinfo("Data Exported", f"Inspection data exported as:\n{filename}\n\nTotal records: {len(records)}")
             self.status_var.set(f"💾 Data exported: {filename} ({len(records)} records)")
+            logging.info(f"💾 Data exported: {filename} ({len(records)} records)")
             
         except Exception as e:
             messagebox.showerror("Export Error", f"Failed to export data:\n{str(e)}")
+            logging.error(f"❌ Failed to export data: {e}")
 
     def view_database_records(self):
         """Display database records in a new window"""
         try:
             self.cursor.execute('''
-                SELECT timestamp, defect_type, confidence, temperature 
+                SELECT timestamp, defect_type, confidence, temperature, 
+                       line_number, pole_number, inspector_name
                 FROM inspection_records 
                 ORDER BY timestamp DESC 
                 LIMIT 100
@@ -1010,32 +974,203 @@ class YOLOPowerLineInspector:
             # Create new window
             db_window = tk.Toplevel(self.root)
             db_window.title("Inspection Records - Last 100 Detections")
-            db_window.geometry("800x400")
+            db_window.geometry("1000x500")
+            db_window.configure(bg='white')
             
-            # Create treeview
-            tree = ttk.Treeview(db_window, columns=("Timestamp", "Defect Type", "Confidence", "Temperature"), show="headings")
+            # Title
+            title_label = tk.Label(db_window, 
+                                  text="Power Line Inspection Database Records",
+                                  font=("Arial", 16, "bold"),
+                                  bg="navy", fg="white",
+                                  pady=10)
+            title_label.pack(fill="x", padx=0, pady=(0, 10))
+            
+            # Create frame for treeview and scrollbar
+            tree_frame = tk.Frame(db_window)
+            tree_frame.pack(fill="both", expand=True, padx=10, pady=10)
+            
+            # Create treeview with more columns
+            columns = ("Timestamp", "Defect Type", "Confidence", "Temperature", "Line Number", "Pole Number", "Inspector")
+            tree = ttk.Treeview(tree_frame, columns=columns, show="headings", height=20)
+            
+            # Define headings
             tree.heading("Timestamp", text="Timestamp")
             tree.heading("Defect Type", text="Defect Type")
             tree.heading("Confidence", text="Confidence")
             tree.heading("Temperature", text="Temperature")
+            tree.heading("Line Number", text="Line Number")
+            tree.heading("Pole Number", text="Pole Number")
+            tree.heading("Inspector", text="Inspector")
             
-            tree.column("Timestamp", width=150)
-            tree.column("Defect Type", width=200)
-            tree.column("Confidence", width=100)
-            tree.column("Temperature", width=100)
+            # Define column widths
+            tree.column("Timestamp", width=150, anchor="center")
+            tree.column("Defect Type", width=200, anchor="w")
+            tree.column("Confidence", width=100, anchor="center")
+            tree.column("Temperature", width=120, anchor="center")
+            tree.column("Line Number", width=100, anchor="center")
+            tree.column("Pole Number", width=100, anchor="center")
+            tree.column("Inspector", width=120, anchor="w")
             
+            # Add scrollbars
+            v_scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
+            h_scrollbar = ttk.Scrollbar(tree_frame, orient="horizontal", command=tree.xview)
+            tree.configure(yscrollcommand=v_scrollbar.set, xscrollcommand=h_scrollbar.set)
+            
+            # Pack treeview and scrollbars
+            tree.grid(row=0, column=0, sticky="nsew")
+            v_scrollbar.grid(row=0, column=1, sticky="ns")
+            h_scrollbar.grid(row=1, column=0, sticky="ew")
+            
+            # Configure grid weights
+            tree_frame.grid_rowconfigure(0, weight=1)
+            tree_frame.grid_columnconfigure(0, weight=1)
+            
+            # Insert records
             for record in records:
-                tree.insert("", "end", values=record)
+                # Convert confidence from decimal to percentage
+                confidence = float(record[2]) * 100
+                formatted_record = (
+                    record[0],  # timestamp
+                    record[1],  # defect_type
+                    f"{confidence:.1f}%",  # confidence as percentage
+                    record[3],  # temperature
+                    record[4] if record[4] else "N/A",  # line_number
+                    record[5] if record[5] else "N/A",  # pole_number
+                    record[6] if record[6] else "N/A"   # inspector_name
+                )
+                tree.insert("", "end", values=formatted_record)
             
-            tree.pack(fill="both", expand=True, padx=10, pady=10)
+            # Add record count
+            count_label = tk.Label(db_window, 
+                                  text=f"Total records displayed: {len(records)}",
+                                  font=("Arial", 10, "bold"),
+                                  bg="white", fg="navy")
+            count_label.pack(pady=5)
             
-            # Add scrollbar
-            scrollbar = ttk.Scrollbar(db_window, orient="vertical", command=tree.yview)
-            tree.configure(yscrollcommand=scrollbar.set)
-            scrollbar.pack(side="right", fill="y")
+            # Add buttons frame
+            button_frame = tk.Frame(db_window, bg="white")
+            button_frame.pack(fill="x", padx=10, pady=10)
+            
+            refresh_btn = tk.Button(button_frame, text="🔄 Refresh", 
+                                   font=("Arial", 10),
+                                   bg="green", fg="white",
+                                   command=lambda: self.refresh_records(tree, count_label))
+            refresh_btn.pack(side="left", padx=5)
+            
+            export_btn = tk.Button(button_frame, text="💾 Export All to CSV", 
+                                  font=("Arial", 10),
+                                  bg="blue", fg="white",
+                                  command=self.export_all_to_csv)
+            export_btn.pack(side="left", padx=5)
+            
+            close_btn = tk.Button(button_frame, text="❌ Close", 
+                                 font=("Arial", 10),
+                                 bg="red", fg="white",
+                                 command=db_window.destroy)
+            close_btn.pack(side="right", padx=5)
+            
+            # Center the window
+            db_window.update_idletasks()
+            width = db_window.winfo_width()
+            height = db_window.winfo_height()
+            x = (db_window.winfo_screenwidth() // 2) - (width // 2)
+            y = (db_window.winfo_screenheight() // 2) - (height // 2)
+            db_window.geometry(f"+{x}+{y}")
             
         except sqlite3.Error as e:
             messagebox.showerror("Database Error", f"Failed to read records: {str(e)}")
+            logging.error(f"❌ Database error reading records: {e}")
+
+    def refresh_records(self, tree, count_label):
+        """Refresh the records in the treeview"""
+        try:
+            # Clear existing items
+            for item in tree.get_children():
+                tree.delete(item)
+            
+            # Fetch updated records
+            self.cursor.execute('''
+                SELECT timestamp, defect_type, confidence, temperature, 
+                       line_number, pole_number, inspector_name
+                FROM inspection_records 
+                ORDER BY timestamp DESC 
+                LIMIT 100
+            ''')
+            records = self.cursor.fetchall()
+            
+            # Insert updated records
+            for record in records:
+                confidence = float(record[2]) * 100
+                formatted_record = (
+                    record[0],
+                    record[1],
+                    f"{confidence:.1f}%",
+                    record[3],
+                    record[4] if record[4] else "N/A",
+                    record[5] if record[5] else "N/A",
+                    record[6] if record[6] else "N/A"
+                )
+                tree.insert("", "end", values=formatted_record)
+            
+            # Update count label
+            count_label.config(text=f"Total records displayed: {len(records)}")
+            
+        except sqlite3.Error as e:
+            messagebox.showerror("Database Error", f"Failed to refresh records: {str(e)}")
+
+    def export_all_to_csv(self):
+        """Export all database records to CSV"""
+        try:
+            self.cursor.execute('''
+                SELECT timestamp, defect_type, confidence, temperature, 
+                       distance, line_number, pole_number, ambient_temperature, 
+                       weather_conditions, inspector_name
+                FROM inspection_records
+                ORDER BY timestamp
+            ''')
+            records = self.cursor.fetchall()
+            
+            if not records:
+                messagebox.showinfo("No Data", "No inspection data to export.")
+                return
+            
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"complete_inspection_data_{timestamp}.csv"
+            
+            with open(filename, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.writer(f)
+                # Write header
+                writer.writerow(["Timestamp", "DefectType", "Confidence", "Temperature", "Distance", 
+                               "LineNumber", "PoleNumber", "AmbientTemperature", "WeatherConditions", "InspectorName"])
+                
+                # Write data
+                for record in records:
+                    # Convert confidence from decimal to percentage for display
+                    confidence_pct = float(record[2]) * 100
+                    formatted_record = [
+                        record[0],  # timestamp
+                        record[1],  # defect_type
+                        f"{confidence_pct:.1f}%",  # confidence as percentage
+                        record[3],  # temperature
+                        record[4] if record[4] else "",  # distance
+                        record[5] if record[5] else "",  # line_number
+                        record[6] if record[6] else "",  # pole_number
+                        record[7] if record[7] else "",  # ambient_temperature
+                        record[8] if record[8] else "",  # weather_conditions
+                        record[9] if record[9] else ""   # inspector_name
+                    ]
+                    writer.writerow(formatted_record)
+            
+            messagebox.showinfo("Export Successful", 
+                              f"All inspection data exported successfully!\n\n"
+                              f"File: {filename}\n"
+                              f"Total records: {len(records)}")
+            self.status_var.set(f"💾 All data exported: {filename} ({len(records)} records)")
+            logging.info(f"💾 All data exported: {filename} ({len(records)} records)")
+            
+        except Exception as e:
+            messagebox.showerror("Export Error", f"Failed to export data:\n{str(e)}")
+            logging.error(f"❌ Failed to export all data: {e}")
 
     def clear_database_records(self):
         """Clear all inspection records from database"""
@@ -1045,21 +1180,10 @@ class YOLOPowerLineInspector:
                 self.conn.commit()
                 messagebox.showinfo("Success", "All inspection records have been cleared.")
                 self.status_var.set("🗑️ All inspection records cleared")
+                logging.info("🗑️ All inspection records cleared")
             except sqlite3.Error as e:
                 messagebox.showerror("Database Error", f"Failed to clear records: {str(e)}")
-
-    def clear_queues(self):
-        """Clear all queues"""
-        while not self.frame_queue.empty():
-            try:
-                self.frame_queue.get_nowait()
-            except queue.Empty:
-                break
-        while not self.result_queue.empty():
-            try:
-                self.result_queue.get_nowait()
-            except queue.Empty:
-                break
+                logging.error(f"❌ Failed to clear database records: {e}")
 
     def on_closing(self):
         """Handle application closing"""
@@ -1069,13 +1193,11 @@ class YOLOPowerLineInspector:
         if hasattr(self, 'conn'):
             self.conn.close()
         self.root.destroy()
+        logging.info("🔴 Application closed")
 
 def main():
     root = tk.Tk()
     app = YOLOPowerLineInspector(root)
-    
-    # Set window icon (optional)
-    # root.iconbitmap('app_icon.ico')  # Uncomment if you have an icon file
     
     # Center the window on screen
     root.update_idletasks()
@@ -1089,7 +1211,6 @@ def main():
     root.protocol("WM_DELETE_WINDOW", app.on_closing)
 
     root.mainloop()
-
 
 if __name__ == "__main__":
     main()

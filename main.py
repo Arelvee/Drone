@@ -367,14 +367,14 @@ class YOLOPowerLineInspector:
             self.status_var.set("🔄 Loading YOLO model...")
             self.root.update()
             
-            if not os.path.exists('sirbagsic.pt'):
+            if not os.path.exists('finalsirbagsic.pt'):
                 messagebox.showerror("Model Error", 
-                                   "Model file 'sirbagsic.pt' not found!\n\n"
+                                   "Model file 'finalsirbagsic.pt' not found!\n\n"
                                    "Please ensure the YOLO model file is in the same directory.")
-                self.status_var.set("🔴 Error: Model file 'sirbagsic.pt' not found")
+                self.status_var.set("🔴 Error: Model file 'finalsirbagsic.pt' not found")
                 return
             
-            self.model = YOLO('sirbagsic.pt')
+            self.model = YOLO('finalsirbagsic.pt')
             
             # Update model class names with our specific classes
             if hasattr(self.model, 'names'):
@@ -1111,7 +1111,6 @@ def main():
     root.protocol("WM_DELETE_WINDOW", app.on_closing)
 
     root.mainloop()
-
 
 if __name__ == "__main__":
     main()
