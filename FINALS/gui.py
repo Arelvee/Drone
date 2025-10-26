@@ -169,7 +169,7 @@ class PowerLineInspectorGUI:
         subtitle_frame.pack(expand=True, fill='x')
         
         subtitle = tk.Label(subtitle_frame,
-                           text="AI-Powered Defect Detection • Real-Time 45-60 FPS • Automated Reporting",
+                           text="Realtime UAV PowerLine Joint Inspection • Real-Time 45-60 FPS • Automated Reporting",
                            font=self.get_font('subtitle'),
                            bg=self.colors['primary'],
                            fg="#bdc3c7")
@@ -243,7 +243,7 @@ class PowerLineInspectorGUI:
         
         # Detection information variables
         self.detection_vars = {
-            "label": tk.StringVar(value="No defects detected"),
+            "label": tk.StringVar(value="No joint detected"),
             "confidence": tk.StringVar(value="0%"),
             "temperature": tk.StringVar(value="0.0 °C"),
             "timestamp": tk.StringVar(value="--:--:--"),
@@ -251,7 +251,7 @@ class PowerLineInspectorGUI:
         }
         
         # Create detection cards
-        self.create_detection_card(current_detection_frame, "Defect Type", "label", "#e74c3c")
+        self.create_detection_card(current_detection_frame, "Joint Type", "label", "#e74c3c")
         self.create_detection_card(current_detection_frame, "Confidence", "confidence", "#3498db")
         self.create_detection_card(current_detection_frame, "Temperature", "temperature", "#e67e22")
         self.create_detection_card(current_detection_frame, "Detection Info", "multiple_info", "#27ae60")
@@ -471,7 +471,7 @@ class PowerLineInspectorGUI:
         display_frame.grid_columnconfigure(0, weight=1)
         
         self.camera_display = tk.Label(display_frame, 
-                                      text="UAV Camera Feed\n\nClick 'START INSPECTION' to begin\nreal-time power line inspection\n\n🎯 Optimized for 45-60 FPS\n🔍 AI-Powered Defect Detection",
+                                      text="UAV Camera Feed\n\nClick 'START INSPECTION' to begin\nreal-time power line inspection\n\n🎯 Optimized for 45-60 FPS\n🔍 Realtime UAV PowerLine Joint Inspection",
                                       font=self.get_font('button_large'), 
                                       fg="white", bg="black",
                                       justify="center")
@@ -786,7 +786,7 @@ class PowerLineInspectorGUI:
                 processed_frame, detection_info = self.detector.process_frame(frame)
                 
                 # Update detection count
-                if detection_info.get("label", "No Detection") != "No Detection" and detection_info.get("label") != "No Defects":
+                if detection_info.get("label", "No Detection") != "No Detection" and detection_info.get("label") != "No Joints":
                     self.detection_count += 1
                     
                     # Save to database if processing is enabled and we have detections
@@ -823,7 +823,7 @@ class PowerLineInspectorGUI:
             # Prepare the data in the format expected by your database
             detection_data = {
                 'timestamp': timestamp,
-                'defect_type': detection_info.get('label', 'Unknown'),
+                'joint_type': detection_info.get('label', 'Unknown'),
                 'confidence': confidence,
                 'temperature': temperature,
                 'line_number': form_data.get('Line Number', ''),
@@ -985,7 +985,7 @@ class PowerLineInspectorGUI:
             # Prepare inspection data
             inspection_data = {
                 'timestamp': timestamp,
-                'defect_type': detection_info.get('label', 'Manual Inspection'),
+                'joint_type': detection_info.get('label', 'Manual Inspection'),
                 'confidence': confidence,
                 'temperature': temperature,
                 'line_number': form_data.get('Line Number', ''),
@@ -1027,7 +1027,7 @@ class PowerLineInspectorGUI:
                 detection_info = current_detection
             else:
                 detection_info = {
-                    "label": "Manual Inspection - No Defects",
+                    "label": "Manual Inspection - No Joints",
                     "confidence": "0%",
                     "temperature": form_data.get('Ambient Temperature', '0.0') + ' °C',
                     "timestamp": datetime.now().strftime("%H:%M:%S"),
@@ -1066,7 +1066,7 @@ class PowerLineInspectorGUI:
                 
                 f.write(f"\nDetection Results:\n")
                 f.write("-" * 20 + "\n")
-                f.write(f"Defect Type: {detection_info['label']}\n")
+                f.write(f"Joint Type: {detection_info['label']}\n")
                 f.write(f"Confidence: {detection_info['confidence']}\n")
                 f.write(f"Temperature: {detection_info['temperature']}\n")
                 f.write(f"Timestamp: {detection_info['timestamp']}\n")
@@ -1113,7 +1113,7 @@ class PowerLineInspectorGUI:
                 
                 f.write(f"\nDETECTION RESULTS:\n")
                 f.write("-" * 40 + "\n")
-                f.write(f"Defect Type: {detection_info.get('label', 'No defects')}\n")
+                f.write(f"Joint Type: {detection_info.get('label', 'No joints')}\n")
                 f.write(f"Confidence: {detection_info.get('confidence', '0%')}\n")
                 f.write(f"Temperature: {detection_info.get('temperature', 'N/A')}\n")
                 f.write(f"Timestamp: {detection_info.get('timestamp', 'N/A')}\n")
@@ -1182,8 +1182,8 @@ class PowerLineInspectorGUI:
             # Create treeview
             tree_frame = tk.Frame(db_window)
             tree_frame.pack(fill="both", expand=True, padx=10, pady=10)
-            
-            columns = ("Timestamp", "Defect Type", "Confidence", "Temperature", "Line Number", "Pole Number", "Inspector")
+
+            columns = ("Timestamp", "Joint Type", "Confidence", "Temperature", "Line Number", "Pole Number", "Inspector")
             tree = ttk.Treeview(tree_frame, columns=columns, show="headings", height=20)
             
             # Define headings and columns
@@ -1191,7 +1191,7 @@ class PowerLineInspectorGUI:
                 tree.heading(col, text=col)
                 tree.column(col, width=120, anchor="center")
             
-            tree.column("Defect Type", width=200, anchor="w")
+            tree.column("Joint Type", width=200, anchor="w")
             tree.column("Timestamp", width=150)
             
             # Add scrollbars
