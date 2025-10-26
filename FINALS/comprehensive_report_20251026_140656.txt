@@ -1,0 +1,32 @@
+============================================================
+        UAV POWER LINE INSPECTION REPORT
+============================================================
+
+SESSION SUMMARY:
+----------------------------------------
+Report Time: 2025-10-26 14:06:56
+Session Duration: 00:01:00
+Total Detections: 205
+Processing FPS: 3.9 FPS
+
+INSPECTION DETAILS:
+----------------------------------------
+Distance from Target: 1
+Line Number: 1
+Pole Number: 1
+Ambient Temperature: 39
+Weather Conditions: Sunny
+Inspector Name: Aldrin Bagsic
+
+DETECTION RESULTS:
+----------------------------------------
+Defect Type: No defects
+Confidence: 0%
+Temperature: N/A
+Timestamp: N/A
+
+SYSTEM INFORMATION:
+----------------------------------------
+Detection Interval: 1
+Real-time Processing: Enabled
+Camera FPS: 29.3 FPS

@@ -1,0 +1,68 @@
+UAV Power Line Inspection Report
+==================================================
+Report Generated: 2025-10-25 15:03:07
+
+Inspection Details:
+--------------------
+Distance from Target: 3
+Line Number: 1
+Pole Number: 2
+Ambient Temperature: 35
+Weather Conditions: Cloudy
+Inspector Name: Ralph
+
+Total Defects Detected: 218
+Session Duration: 00:02:17
+
+Defect Log:
+--------------------
+1. 2-2A-Hummer Driven Wedge Joint-BARE - 72.1% at 2025-10-25 15:02:37 (Temp: 35.8 °C)
+2. 2-2A-Hummer Driven Wedge Joint-BARE - 73.7% at 2025-10-25 15:02:38 (Temp: 36.1 °C)
+3. 2-2A-Hummer Driven Wedge Joint-BARE - 78.0% at 2025-10-25 15:02:38 (Temp: 36.7 °C)
+4. 2-2A-Hummer Driven Wedge Joint-BARE - 89.6% at 2025-10-25 15:02:38 (Temp: 38.4 °C)
+5. 2-2A-Hummer Driven Wedge Joint-BARE - 89.1% at 2025-10-25 15:02:38 (Temp: 38.4 °C)
+6. 2-2A-Hummer Driven Wedge Joint-BARE - 88.4% at 2025-10-25 15:02:39 (Temp: 38.3 °C)
+7. 2-2A-Hummer Driven Wedge Joint-BARE - 77.2% at 2025-10-25 15:02:39 (Temp: 36.6 °C)
+8. 2-2A-Hummer Driven Wedge Joint-BARE - 83.7% at 2025-10-25 15:02:39 (Temp: 37.6 °C)
+9. 2-2A-Hummer Driven Wedge Joint-BARE - 87.4% at 2025-10-25 15:02:39 (Temp: 38.1 °C)
+10. 2-2A-Hummer Driven Wedge Joint-BARE - 87.6% at 2025-10-25 15:02:40 (Temp: 38.1 °C)
+11. 2-2A-Hummer Driven Wedge Joint-BARE - 86.9% at 2025-10-25 15:02:40 (Temp: 38.0 °C)
+12. 2-2A-Hummer Driven Wedge Joint-BARE - 86.9% at 2025-10-25 15:02:40 (Temp: 38.0 °C)
+13. 2-2A-Hummer Driven Wedge Joint-BARE - 74.5% at 2025-10-25 15:02:40 (Temp: 36.2 °C)
+14. 2-2A-Hummer Driven Wedge Joint-BARE - 90.0% at 2025-10-25 15:02:41 (Temp: 38.5 °C)
+15. 2-2A-Hummer Driven Wedge Joint-BARE - 89.7% at 2025-10-25 15:02:41 (Temp: 38.5 °C)
+16. 2-2A-Hummer Driven Wedge Joint-BARE - 90.1% at 2025-10-25 15:02:41 (Temp: 38.5 °C)
+17. 2-2A-Hummer Driven Wedge Joint-BARE - 89.2% at 2025-10-25 15:02:42 (Temp: 38.4 °C)
+18. 2-2A-Hummer Driven Wedge Joint-BARE - 89.9% at 2025-10-25 15:02:42 (Temp: 38.5 °C)
+19. 2-2A-Hummer Driven Wedge Joint-BARE - 89.9% at 2025-10-25 15:02:42 (Temp: 38.5 °C)
+20. 2-2A-Hummer Driven Wedge Joint-BARE - 90.0% at 2025-10-25 15:02:42 (Temp: 38.5 °C)
+21. 2-2A-Hummer Driven Wedge Joint-BARE - 85.9% at 2025-10-25 15:02:43 (Temp: 37.9 °C)
+22. 2-2A-Hummer Driven Wedge Joint-BARE - 82.5% at 2025-10-25 15:02:43 (Temp: 37.4 °C)
+23. 2-2A-Hummer Driven Wedge Joint-BARE - 80.9% at 2025-10-25 15:02:43 (Temp: 37.1 °C)
+24. 2-2A-Hummer Driven Wedge Joint-BARE - 82.1% at 2025-10-25 15:02:43 (Temp: 37.3 °C)
+25. 2-2A-Hummer Driven Wedge Joint-BARE - 78.9% at 2025-10-25 15:02:44 (Temp: 36.8 °C)
+26. 2-2A-Hummer Driven Wedge Joint-BARE - 85.3% at 2025-10-25 15:02:44 (Temp: 37.8 °C)
+27. 2-2A-Hummer Driven Wedge Joint-BARE - 85.5% at 2025-10-25 15:02:44 (Temp: 37.8 °C)
+28. 2-2A-Hummer Driven Wedge Joint-BARE - 85.0% at 2025-10-25 15:02:44 (Temp: 37.7 °C)
+29. 2-2A-Hummer Driven Wedge Joint-BARE - 83.1% at 2025-10-25 15:02:45 (Temp: 37.5 °C)
+30. 2-2A-Hummer Driven Wedge Joint-BARE - 83.7% at 2025-10-25 15:02:45 (Temp: 37.6 °C)
+31. 2-2A-Hummer Driven Wedge Joint-BARE - 84.0% at 2025-10-25 15:02:45 (Temp: 37.6 °C)
+32. 2-2A-Hummer Driven Wedge Joint-BARE - 83.9% at 2025-10-25 15:02:45 (Temp: 37.6 °C)
+33. 2-2A-Hummer Driven Wedge Joint-BARE - 83.0% at 2025-10-25 15:02:46 (Temp: 37.5 °C)
+34. 2-2A-Hummer Driven Wedge Joint-BARE - 85.6% at 2025-10-25 15:02:46 (Temp: 37.8 °C)
+35. 2-2A-Hummer Driven Wedge Joint-BARE - 82.6% at 2025-10-25 15:02:46 (Temp: 37.4 °C)
+36. 2-2A-Hummer Driven Wedge Joint-BARE - 86.5% at 2025-10-25 15:02:47 (Temp: 38.0 °C)
+37. 2-2A-Hummer Driven Wedge Joint-BARE - 80.8% at 2025-10-25 15:02:47 (Temp: 37.1 °C)
+38. 2-2A-Hummer Driven Wedge Joint-BARE - 82.2% at 2025-10-25 15:02:47 (Temp: 37.3 °C)
+39. 2-2A-Hummer Driven Wedge Joint-BARE - 84.9% at 2025-10-25 15:02:47 (Temp: 37.7 °C)
+40. 2-2A-Hummer Driven Wedge Joint-BARE - 87.6% at 2025-10-25 15:02:48 (Temp: 38.1 °C)
+41. 2-2A-Hummer Driven Wedge Joint-BARE - 87.3% at 2025-10-25 15:02:48 (Temp: 38.1 °C)
+42. 2-2A-Hummer Driven Wedge Joint-BARE - 86.0% at 2025-10-25 15:02:48 (Temp: 37.9 °C)
+43. 2-2A-Hummer Driven Wedge Joint-BARE - 87.5% at 2025-10-25 15:02:49 (Temp: 38.1 °C)
+44. 2-2A-Hummer Driven Wedge Joint-BARE - 88.2% at 2025-10-25 15:02:49 (Temp: 38.2 °C)
+45. 2-2A-Hummer Driven Wedge Joint-BARE - 88.2% at 2025-10-25 15:02:49 (Temp: 38.2 °C)
+46. 2-2A-Hummer Driven Wedge Joint-BARE - 88.7% at 2025-10-25 15:02:49 (Temp: 38.3 °C)
+47. 2-2A-Hummer Driven Wedge Joint-BARE - 88.7% at 2025-10-25 15:02:50 (Temp: 38.3 °C)
+48. 2-2A-Hummer Driven Wedge Joint-BARE - 81.6% at 2025-10-25 15:02:50 (Temp: 37.2 °C)
+49. 2-2A-Hummer Driven Wedge Joint-BARE - 28.4% at 2025-10-25 15:02:50 (Temp: 29.3 °C)
+50. 2-2A-Hummer Driven Wedge Joint-BARE - 50.3% at 2025-10-25 15:02:51 (Temp: 32.5 °C)

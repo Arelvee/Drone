@@ -408,48 +408,59 @@ class YOLOPowerLineInspector:
             self.status_var.set(error_msg)
             messagebox.showerror("Model Loading Error", error_msg)
 
-    # 🔹 Initialize Camera
-    def open_camera(self):
-        """Initialize camera with retry mechanism"""
-        # Try different camera backends for better compatibility
-        backends = [cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_V4L2, cv2.CAP_ANY]
-        
-        camera = None
-        for backend in backends:
-            camera = cv2.VideoCapture(0, backend)
+    # 🔹 Initialize Camera or Video File
+def open_camera(self):
+    """Initialize camera or load video file with retry mechanism"""
+    video_path = "TEST1-Drone.mp4"
+
+    # Try video file first
+    if os.path.exists(video_path):
+        camera = cv2.VideoCapture(video_path)
+        if camera.isOpened():
+            logging.info(f"🎞️ Loaded video file: {video_path}")
+            return camera
+        else:
+            logging.warning("⚠️ Failed to open video file. Trying camera sources...")
+
+    # Try camera backends
+    backends = [cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_V4L2, cv2.CAP_ANY]
+    camera = None
+
+    for backend in backends:
+        for i in range(3):  # Try multiple camera indices
+            camera = cv2.VideoCapture(i, backend)
             if camera.isOpened():
+                logging.info(f"🎥 Camera opened successfully using backend {backend}, index {i}")
                 break
-            # Try different camera indices
-            for i in range(1, 3):
-                camera = cv2.VideoCapture(i, backend)
-                if camera.isOpened():
-                    break
-            if camera and camera.isOpened():
+        if camera and camera.isOpened():
+            break
+
+    # Retry with video fallback
+    if not camera or not camera.isOpened():
+        retry_count = 0
+        while retry_count < 5:
+            logging.warning("🔄 Retrying video connection...")
+            time.sleep(2)
+            camera = cv2.VideoCapture(video_path)
+            if camera.isOpened():
+                logging.info("🎞️ Video file loaded after retry")
                 break
-        
-        if not camera or not camera.isOpened():
-            retry_count = 0
-            while retry_count < 5:
-                logging.warning("🔄 Retrying camera connection...")
-                time.sleep(2)
-                camera = cv2.VideoCapture(0)
-                if camera.isOpened():
-                    break
-                retry_count += 1
+            retry_count += 1
 
-        if not camera or not camera.isOpened():
-            logging.error("❌ Camera failed to open. Check connection.")
-            return None
+    if not camera or not camera.isOpened():
+        logging.error("❌ Camera or video source failed to open.")
+        return None
 
-        # Camera configuration for better performance
-        camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-        camera.set(cv2.CAP_PROP_FPS, 30)
-        camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-        camera.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
-        
-        logging.info("✅ Camera initialized successfully")
-        return camera
+    # Configuration (for both)
+    camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    camera.set(cv2.CAP_PROP_FPS, 30)
+    camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    camera.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+
+    logging.info("✅ Camera/video initialized successfully")
+    return camera
+
 
     def start_inspection(self):
         """Start the camera and begin inspection"""
