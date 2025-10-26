@@ -1,0 +1,15 @@
+UAV Power Line Inspection Report
+==================================================
+Report Generated: 2025-10-26 15:08:25
+
+Inspection Details:
+--------------------
+Distance from Target: 15
+Line Number: LN-001
+Pole Number: P-045
+Ambient Temperature: 25
+Weather Conditions: Clear
+Inspector Name: UAV Operator
+
+Detection Results:
+--------------------

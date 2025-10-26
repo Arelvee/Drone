@@ -243,7 +243,7 @@ class PowerLineInspectorGUI:
         
         # Detection information variables
         self.detection_vars = {
-            "label": tk.StringVar(value="No joint detected"),
+            "joint_type": tk.StringVar(value="No joint detected"),
             "confidence": tk.StringVar(value="0%"),
             "temperature": tk.StringVar(value="0.0 °C"),
             "timestamp": tk.StringVar(value="--:--:--"),
@@ -251,7 +251,7 @@ class PowerLineInspectorGUI:
         }
         
         # Create detection cards
-        self.create_detection_card(current_detection_frame, "Joint Type", "label", "#e74c3c")
+        self.create_detection_card(current_detection_frame, "Joint Type", "joint_type", "#e74c3c")
         self.create_detection_card(current_detection_frame, "Confidence", "confidence", "#3498db")
         self.create_detection_card(current_detection_frame, "Temperature", "temperature", "#e67e22")
         self.create_detection_card(current_detection_frame, "Detection Info", "multiple_info", "#27ae60")
@@ -823,16 +823,14 @@ class PowerLineInspectorGUI:
             # Prepare the data in the format expected by your database
             detection_data = {
                 'timestamp': timestamp,
-                'joint_type': detection_info.get('label', 'Unknown'),
+                'joint_type': detection_info.get('joint_type', 'Unknown'),
                 'confidence': confidence,
                 'temperature': temperature,
                 'line_number': form_data.get('Line Number', ''),
                 'pole_number': form_data.get('Pole Number', ''),
                 'inspector': form_data.get('Inspector Name', ''),
                 'distance': form_data.get('Distance from Target', ''),
-                'weather': form_data.get('Weather Conditions', ''),
-                'wind_speed': form_data.get('Wind Speed', ''),
-                'humidity': form_data.get('Humidity', '')
+                'ambient_temp': form_data.get('Ambient Temperature', ''),
             }
             
             # Save using your database method
@@ -990,12 +988,10 @@ class PowerLineInspectorGUI:
                 'temperature': temperature,
                 'line_number': form_data.get('Line Number', ''),
                 'pole_number': form_data.get('Pole Number', ''),
-                'inspector': form_data.get('Inspector Name', ''),
                 'distance': form_data.get('Distance from Target', ''),
                 'weather': form_data.get('Weather Conditions', ''),
-                'wind_speed': form_data.get('Wind Speed', ''),
-                'humidity': form_data.get('Humidity', ''),
-                'ambient_temperature': form_data.get('Ambient Temperature', '')
+                'ambient_temperature': form_data.get('Ambient Temperature', ''),
+                'inspector': form_data.get('Inspector Name', '')
             }
             
             # Use the appropriate database method
@@ -1066,7 +1062,7 @@ class PowerLineInspectorGUI:
                 
                 f.write(f"\nDetection Results:\n")
                 f.write("-" * 20 + "\n")
-                f.write(f"Joint Type: {detection_info['label']}\n")
+                f.write(f"Joint Type: {detection_info['joint_type']}\n")
                 f.write(f"Confidence: {detection_info['confidence']}\n")
                 f.write(f"Temperature: {detection_info['temperature']}\n")
                 f.write(f"Timestamp: {detection_info['timestamp']}\n")
@@ -1113,7 +1109,7 @@ class PowerLineInspectorGUI:
                 
                 f.write(f"\nDETECTION RESULTS:\n")
                 f.write("-" * 40 + "\n")
-                f.write(f"Joint Type: {detection_info.get('label', 'No joints')}\n")
+                f.write(f"Joint Type: {detection_info.get('joint_type', 'No joints')}\n")
                 f.write(f"Confidence: {detection_info.get('confidence', '0%')}\n")
                 f.write(f"Temperature: {detection_info.get('temperature', 'N/A')}\n")
                 f.write(f"Timestamp: {detection_info.get('timestamp', 'N/A')}\n")

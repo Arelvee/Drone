@@ -1,0 +1,15 @@
+UAV Power Line Inspection Report
+==================================================
+Report Generated: 2025-10-26 15:06:54
+
+Inspection Details:
+--------------------
+Distance from Target: 1
+Line Number: 1
+Pole Number: 1
+Ambient Temperature: 40
+Weather Conditions: Sunny
+Inspector Name: Aldrin Bagsic
+
+Detection Results:
+--------------------
